@@ -13,11 +13,16 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 # ##########
 option(PACKAGE_TESTS "Build the tests" ON)
 
+find_package(Eigen3 REQUIRED)
+find_package(pinocchio REQUIRED)
+
 # Add include directory
 include_directories(include)
 
 # Add library
 add_library(mars_model_lib src/mars_model.cpp)
+# add library dependencies
+target_link_libraries(mars_model_lib PUBLIC Eigen3::Eigen pinocchio::pinocchio)
 
 add_subdirectory(examples)
 
