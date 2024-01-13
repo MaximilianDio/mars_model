@@ -9,5 +9,5 @@ MarsModel::MarsModel()
 {
     std::cout << "MarsModel constructor" << std::endl;
 }
-    
+
 } // namespace mars

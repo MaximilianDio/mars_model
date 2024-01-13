@@ -1,14 +1,16 @@
 #ifndef MARS_MODEL_HPP
 #define MARS_MODEL_HPP
 
-namespace mars {
+namespace mars
+{
 
-class MarsModel {
+class MarsModel
+{
 
-    public:
-        MarsModel();
+public:
+    MarsModel();
 
-        double test_value = 0.0;
+    double test_value = 0.0;
 };
 } // namespace mars
 
