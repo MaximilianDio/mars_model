@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <robot name="obj_se3">
     
-    <!-- measured frame -->
-    <joint name="measured_com_joint" type="fixed">
-        <parent link="obj_measured"/>
-        <child link="obj_com"/>
-        <origin xyz="0 0 0" rpy="0 0 0"/>
-    </joint>
-    <link name="obj_measured"></link>
-
     <!-- center of mass -->
     <link name="obj_com">
         <inertial>
@@ -26,6 +18,14 @@
             </material>
         </visual>
     </link>
+
+    <!-- measured frame -->
+    <joint name="com_measured_joint" type="fixed">
+        <parent link="obj_com"/>
+        <child link="obj_measured"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+    <link name="obj_measured"></link>
 
     <!-- grasp frames -->
     <joint name="virt_stick_01" type="fixed">
