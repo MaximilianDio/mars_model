@@ -5,12 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "pinocchio/algorithm/crba.hpp"
-#include "pinocchio/algorithm/frames.hpp"
-#include "pinocchio/algorithm/model.hpp"
-#include "pinocchio/parsers/urdf.hpp"
-
-#include "utils.hpp"
+#include "base_model.hpp"
 
 namespace mars
 {
@@ -26,47 +21,29 @@ const std::string obj_com_frame_name = "obj_com";
 const std::string obj_ref_frame_name = "obj_ref";
 
 
-class SE3
+class SE3 : public BaseModel
 {
 public:
-    /**
-     * @brief Construct a new SE3 object by copying a pinocchio model
-    */
-    SE3(pinocchio::Model &model)
+    SE3(pinocchio::Model &model) : BaseModel(model)
     {
-        model_ = model;
     }
-    /**
-     * @brief Construct a new SE3 object by loading a urdf file
-    */
-    SE3(const std::string &urdf_filename)
+    SE3(const std::string &urdf_filename) : BaseModel(urdf_filename)
     {
-        pinocchio::urdf::buildModel(urdf_filename, model_);
     }
 
-    /**
-     * @brief Get the frame ids and compute relative frames
-    */
-    void init()
+    void init(const std::vector<std::string> &grasp_frame_names)
     {
-        // get frame ids
-
-        auto getFrameId = [&](const std::string &frame_name, pinocchio::JointIndex &frame_id) {
-            if (model_.existFrame(frame_name))
-                frame_id = model_.getFrameId(frame_name);
-            else
-                std::cout << "frame: " << frame_name << " does not belong to the model\n";
-        };
-
         getFrameId(obj_com_frame_name, com_frame_id_);
         getFrameId(obj_meaured_frame_name, measured_frame_id_);
         getFrameId(obj_ref_frame_name, ref_frame_id_);
 
-        for (const auto &frame_name : obj_grasp_frame_names)
+        frame_ids_.clear();
+        frame_ids_.reserve(grasp_frame_names.size());
+        for (const auto &frame_name : grasp_frame_names)
         {
             pinocchio::JointIndex frame_id;
             getFrameId(frame_name, frame_id);
-            grasp_frame_ids_.push_back(frame_id);
+            frame_ids_.push_back(frame_id);
         }
 
         // compute relative frames
@@ -74,10 +51,12 @@ public:
         T_ref2com_ = model_.frames[ref_frame_id_].placement;
         T_meas2com_ = model_.frames[measured_frame_id_].placement;
 
-        T_grasp2meas_.reserve(grasp_frame_ids_.size());
-        T_grasp2com_.reserve(grasp_frame_ids_.size());
+        T_grasp2com_.clear();
+        T_grasp2meas_.clear();
+        T_grasp2meas_.reserve(frame_ids_.size());
+        T_grasp2com_.reserve(frame_ids_.size());
         // T_mocap2grasp
-        for (const auto &frame_id : grasp_frame_ids_)
+        for (const auto &frame_id : frame_ids_)
         {
             T_grasp2com_.push_back(model_.frames[frame_id].placement);
 
@@ -93,20 +72,11 @@ public:
         M_(2, 2) = mass_;
         M_.block<3, 3>(3, 3) = theta_;
 
-        std::cout << "Object: Number of graspframes: " << grasp_frame_ids_.size() << "\n";
+        std::cout << "Object: Number of graspframes: " << frame_ids_.size() << "\n";
     }
 
-    /**
-     * @brief Compute the mass matrix in world frame of the dynamics equation
-     * 
-     * @param q generalized coordinates
-     * @param Mw mass matrix in world frame
-     * 
-     * @return Eigen::Ref<Eigen::MatrixXd> mass matrix in world frame
-     * 
-     * @details M = blockdiag(m*I,R_WB*I_B*R_BW )
-    */
-    Eigen::Ref<Eigen::MatrixXd> mass_matrix(const Eigen::VectorXd &q, Eigen::Ref<Eigen::MatrixXd> Mw)
+
+    Eigen::Ref<const Eigen::MatrixXd> mass_matrix(const Eigen::VectorXd &q, Eigen::Ref<Eigen::MatrixXd> Mw)
     {
         // transform mass matrix to world frame
         const auto quat = Eigen::Quaternion<double>(q.tail<4>());
@@ -119,36 +89,17 @@ public:
         return Mw;
     }
 
-    /**
-     * @brief Compute the gravity term of the dynamics equation
-     * 
-     * @param q generalized coordinates
-     * @param g gravity term
-     * 
-     * @return Eigen::Ref<Eigen::VectorXd> gravity term
-     * 
-     * @details gravityElements(g = [m * g_vec; 0])
-    */
-    Eigen::Ref<Eigen::VectorXd> gravity_term(const Eigen::VectorXd & /*q*/, Eigen::Ref<Eigen::VectorXd> g)
+
+    Eigen::Ref<const Eigen::VectorXd> gravity_term(const Eigen::VectorXd & /*q*/, Eigen::Ref<Eigen::VectorXd> g)
     {
         g.head(3) = model_.gravity.linear() * mass_;
         return g;
     }
 
-    /**
-     * @brief Compute the nonlinear term of the dynamics equation
-     * 
-     * @param q generalized coordinates
-     * @param v generalized velocities
-     * @param nle nonlinear term
-     * 
-     * @return Eigen::Ref<Eigen::VectorXd> nonlinear term
-     * 
-     * @details nonlinearElements(n = [-m * g_vec; w x(I * w)]) // Minus g_vec is correct here!
-    */
-    Eigen::Ref<Eigen::VectorXd> non_linear_term(const Eigen::VectorXd &q,
-                                                const Eigen::VectorXd &v,
-                                                Eigen::Ref<Eigen::VectorXd> nle)
+
+    Eigen::Ref<const Eigen::VectorXd> non_linear_term(const Eigen::VectorXd &q,
+                                                      const Eigen::VectorXd &v,
+                                                      Eigen::Ref<Eigen::VectorXd> nle)
     {
         const auto quat = Eigen::Quaternion<double>(q.tail<4>());
 
@@ -161,85 +112,56 @@ public:
         return nle;
     }
 
-    /**
-     * @brief Compute the kinematic ODE of the dynamics equation
-     * 
-     * @param q generalized coordinates
-     * @param v generalized velocities
-     * @param qdot generalized velocities
-     * 
-     * @return Eigen::Ref<Eigen::VectorXd> generalized velocities
-     * 
-     * @details dq = [I,0;0,Z(quat)]*[v;w] (Z defines the quaternion propagation from angular velocity)
-     *          Z is defined in utils.hpp
-     * 
-    */
-    Eigen::Ref<Eigen::VectorXd> kinematic_ode(const Eigen::VectorXd &q,
-                                              const Eigen::VectorXd &v,
-                                              Eigen::Ref<Eigen::VectorXd> qdot)
+    Eigen::Ref<const Eigen::VectorXd> kinematic_ode(const Eigen::VectorXd &q,
+                                                    const Eigen::VectorXd &v,
+                                                    Eigen::Ref<Eigen::VectorXd> qdot)
     {
         OMEGA(Eigen::Quaterniond(q.tail<4>()), Z_);
         qdot << v.head(3), Z_ * v.tail<3>();
         return qdot;
     }
 
-    /**
-     * @brief Compute the frame jacobian of a grasp frame in world frame
-     * 
-     * @param grasp_idx index of the grasp frame
-     * @param q generalized coordinates
-     * @param J frame jacobian of the grasp frame in world frame
-     * 
-     * @return Eigen::Ref<Eigen::MatrixXd> frame jacobian of the grasp frame in world frame
-     * 
-     * @details G^T_i = [I, -[r]_x; 0, I]
-    */
-    Eigen::Ref<Eigen::MatrixXd> frame_jacobian(const int grasp_idx,
-                                               const Eigen::VectorXd &q,
-                                               Eigen::Ref<Eigen::MatrixXd> J)
+    const pinocchio::SE3 &frame_placement(const int idx, pinocchio::SE3 &M)
     {
-        const auto quat = Eigen::Quaternion<double>(q.tail<4>());
+        M = T_WB_ * T_grasp2com_[idx];
+        return M;
+    }
+
+    Eigen::Ref<const Eigen::VectorXd> frame_velocity(const int idx, Eigen::Ref<Eigen::VectorXd> v_frame)
+    {
+        // v_frame = [v_WB; w_WB]
+        v_frame.head(3) = v_.linear() + v_.angular().cross(T_WB_.rotation() * T_grasp2com_[idx].translation());
+        v_frame.tail(3) = v_.angular();
+
+        return v_frame;
+    }
+
+    void update_kinematics(const Eigen::VectorXd &q, const Eigen::VectorXd &v)
+    {
+        T_WB_ = pinocchio::SE3(Eigen::Quaternion<double>(q.tail<4>()), q.head<3>());
+        v_ = pinocchio::MotionTpl<double>(v.head(3), v.tail<3>());
+    }
+
+    Eigen::Ref<const Eigen::MatrixXd> frame_jacobian(const int grasp_idx, Eigen::Ref<Eigen::MatrixXd> J)
+    {
         // G^T_i = [I, -[r]_x]
         //         [0,    I  ]
         J.setIdentity();
-        pinocchio::skew(-quat.toRotationMatrix() * T_grasp2com_[grasp_idx].translation(), J.block<3, 3>(0, 3));
+        pinocchio::skew(-T_WB_.rotation() * T_grasp2com_[grasp_idx].translation(), J.block<3, 3>(0, 3));
 
         return J;
     }
 
-    /**
-     * @brief Compute the local acceleration of a grasp frame in world frame
-     * 
-     * @param grasp_idx index of the grasp frame
-     * @param q generalized coordinates
-     * @param v generalized velocities
-     * @param a local acceleration of the grasp frame in world frame
-     * 
-     * @return Eigen::Ref<Eigen::VectorXd> local acceleration of the grasp frame in world frame
-     * 
-     * @details dw = w x (w x r)
-    */
-    Eigen::Ref<Eigen::VectorXd> frame_local_acc(const int grasp_idx,
-                                                const Eigen::VectorXd &q,
-                                                const Eigen::VectorXd &v,
-                                                Eigen::Ref<Eigen::VectorXd> a)
+    Eigen::Ref<const Eigen::VectorXd> frame_local_acc(const int grasp_idx, Eigen::Ref<Eigen::VectorXd> a)
     {
-        const auto quat = Eigen::Quaternion<double>(q.tail<4>());
-
         // dw = w x (w x r)
-        a.head(3) =
-            v.tail<3>(3).cross(v.tail<3>(3).cross(quat.toRotationMatrix() * T_grasp2com_[grasp_idx].translation()));
+        a.head(3) = v_.angular().cross(v_.angular().cross(T_WB_.rotation() * T_grasp2com_[grasp_idx].translation()));
         a.tail(3).setZero();
 
         return a;
     }
 
-
-    // pinocchio model
-    pinocchio::Model model_;
-
 private:
-    std::vector<pinocchio::JointIndex> grasp_frame_ids_ = {};
     pinocchio::JointIndex com_frame_id_;
     pinocchio::JointIndex measured_frame_id_;
     pinocchio::JointIndex ref_frame_id_;
@@ -256,8 +178,10 @@ private:
 
     double mass_;
     Eigen::Matrix3d theta_; // inertia matrix in com frame
-};
 
+    pinocchio::MotionTpl<double> v_;
+    pinocchio::SE3 T_WB_; // transformation from world to base frame
+};
 } // namespace mars
 
 #endif // MARS_MODEL_SE3_HPP

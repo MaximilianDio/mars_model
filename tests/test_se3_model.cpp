@@ -10,12 +10,7 @@
 #define PINOCCHIO_MODEL_DIR "/workspace/models/object_3d"
 #endif
 
-TEST(sample_test_case, sample_test)
-{
-    EXPECT_EQ(1, 1);
-}
-
-int main(int argc, char **argv)
+TEST(TestConstructor, TestConstructorViaModel)
 {
     // You should change here to set up your own URDF file or just pass it as an argument of this example.
     const std::string urdf_filename = PINOCCHIO_MODEL_DIR + std::string("/se3_object.urdf");
@@ -24,48 +19,110 @@ int main(int argc, char **argv)
     pinocchio::urdf::buildModel(urdf_filename, model);
 
     mars::SE3 mars_model(model);
-    mars_model.init();
-    mars::SE3 mars_model2(urdf_filename);
-    mars_model2.init();
+}
 
-    Eigen::VectorXd q = Eigen::VectorXd::Random(7);
-    q.tail(4) = Eigen::Quaterniond::UnitRandom().coeffs();
-    Eigen::VectorXd v = Eigen::VectorXd::Random(6);
-    Eigen::VectorXd dv = Eigen::VectorXd::Random(6);
+TEST(TestConstructor, TestConstructorViaURDF)
+{
+    // You should change here to set up your own URDF file or just pass it as an argument of this example.
+    const std::string urdf_filename = PINOCCHIO_MODEL_DIR + std::string("/se3_object.urdf");
 
-    Eigen::MatrixXd M = Eigen::MatrixXd::Zero(6, 6);
-    M = mars_model.mass_matrix(q, M);
+    mars::SE3 mars_model(urdf_filename);
+}
+
+class TestSE3Model : public ::testing::Test
+{
+protected:
+    virtual void SetUp()
+    {
+        // You should change here to set up your own URDF file or just pass it as an argument of this example.
+        const std::string urdf_filename = PINOCCHIO_MODEL_DIR + std::string("/se3_object.urdf");
+        mars_model_ = std::make_shared<mars::SE3>(urdf_filename);
+
+        nq_ = 7;
+        nv_ = 6;
+        // init state
+        q_ = Eigen::VectorXd::Random(nq_);
+        q_.tail(4) = Eigen::Quaterniond::UnitRandom().coeffs();
+        v_ = Eigen::VectorXd::Random(nv_);
+        dv_ = Eigen::VectorXd::Random(nv_);
+    }
+
+    virtual void TearDown()
+    {
+    }
+
+    std::shared_ptr<mars::SE3> mars_model_;
+
+    Eigen::VectorXd q_;
+    Eigen::VectorXd v_;
+    Eigen::VectorXd dv_;
+
+    double nq_;
+    double nv_;
+};
+
+TEST_F(TestSE3Model, TestInit)
+{
+    EXPECT_THROW(mars_model_->init({"obj_p_01", "obj_p_03"}), std::invalid_argument);
+    EXPECT_NO_THROW(mars_model_->init({"obj_p_01", "obj_p_02"})) << "init failed";
+}
+
+TEST_F(TestSE3Model, TestMassMatrix)
+{
+    mars_model_->init({"obj_p_01", "obj_p_02"});
+    Eigen::MatrixXd M = Eigen::MatrixXd::Zero(nv_, nv_);
+    M = mars_model_->mass_matrix(q_, M);
     std::cout << "M = \n" << M << std::endl;
 
-    Eigen::VectorXd g = Eigen::VectorXd::Zero(6);
-    g = mars_model.gravity_term(q, g);
+    EXPECT_TRUE(M.isApprox(M.transpose())) << "M is not symmetric";
+}
+
+TEST_F(TestSE3Model, TestGravityTerm)
+{
+    mars_model_->init({"obj_p_01", "obj_p_02"});
+    Eigen::VectorXd g = Eigen::VectorXd::Zero(nv_);
+    g = mars_model_->gravity_term(q_, g);
     std::cout << "g = " << g.transpose() << std::endl;
+}
 
-    Eigen::VectorXd nle = Eigen::VectorXd::Zero(6);
-    nle = mars_model.non_linear_term(q, v, nle);
+TEST_F(TestSE3Model, TestNonLinearTerm)
+{
+    mars_model_->init({"obj_p_01", "obj_p_02"});
+    Eigen::VectorXd nle = Eigen::VectorXd::Zero(nv_);
+    nle = mars_model_->non_linear_term(q_, v_, nle);
     std::cout << "nle = " << nle.transpose() << std::endl;
+}
 
-    Eigen::VectorXd qdot = Eigen::VectorXd::Zero(7);
-    qdot = mars_model.kinematic_ode(q, v, qdot);
-    std::cout << "qdot = " << qdot.transpose() << std::endl;
+TEST_F(TestSE3Model, TestKinematics)
+{
+    mars_model_->init({"obj_p_01", "obj_p_02"});
+    mars_model_->update_kinematics(q_, v_);
 
-    Eigen::MatrixXd J_0 = Eigen::MatrixXd::Zero(6, 6);
-    J_0 = mars_model.frame_jacobian(0, q, J_0);
-    std::cout << "J_0 = \n" << J_0 << std::endl;
+    pinocchio::SE3 Mi;
+    Eigen::VectorXd vi = Eigen::VectorXd::Zero(6);
+    Eigen::MatrixXd Ji = Eigen::MatrixXd::Zero(nv_, nv_);
+    Eigen::VectorXd ai = Eigen::VectorXd::Zero(6);
+    for (int i = 0; i < 2; i++)
+    {
+        Mi = mars_model_->frame_placement(i, Mi);
+        std::cout << "M_" << i << " = \n" << Mi.toHomogeneousMatrix() << std::endl;
 
-    Eigen::MatrixXd J_1 = Eigen::MatrixXd::Zero(6, 6);
-    J_1 = mars_model.frame_jacobian(1, q, J_1);
-    std::cout << "J_1 = \n" << J_1 << std::endl;
+        vi = mars_model_->frame_velocity(i, vi);
+        std::cout << "v_" << i << " = " << vi.transpose() << std::endl;
 
-    Eigen::VectorXd a_0 = Eigen::VectorXd::Zero(6);
-    a_0 = mars_model.frame_local_acc(0, q, v, a_0);
-    std::cout << "a_0 = " << a_0.transpose() << std::endl;
+        Ji = mars_model_->frame_jacobian(i, Ji);
+        std::cout << "J_" << i << " = \n" << Ji << std::endl;
 
-    Eigen::VectorXd a_1 = Eigen::VectorXd::Zero(6);
-    a_1 = mars_model.frame_local_acc(1, q, v, a_1);
-    std::cout << "a_1 = " << a_1.transpose() << std::endl;
+        EXPECT_TRUE((Ji * v_).isApprox(vi)) << "J_" << i << " * v_ != v_" << i;
+
+        ai = mars_model_->frame_local_acc(i, ai);
+        std::cout << "local_a_" << i << " = " << ai.transpose() << std::endl;
+    }
+}
 
 
+int main(int argc, char **argv)
+{
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
