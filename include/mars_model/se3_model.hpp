@@ -65,12 +65,12 @@ public:
 
         // get mass matrix and gravity vector
         mass_ = model_.inertias[0].mass();
-        theta_ = model_.inertias[0].inertia();
+        inertia_com_B_ = model_.inertias[0].inertia();
 
-        M_(0, 0) = mass_;
-        M_(1, 1) = mass_;
-        M_(2, 2) = mass_;
-        M_.block<3, 3>(3, 3) = theta_;
+        M_com_B_(0, 0) = mass_;
+        M_com_B_(1, 1) = mass_;
+        M_com_B_(2, 2) = mass_;
+        M_com_B_.block<3, 3>(3, 3) = inertia_com_B_;
 
         std::cout << "Object: Number of graspframes: " << frame_ids_.size() << "\n";
     }
@@ -82,9 +82,9 @@ public:
         const auto quat = Eigen::Quaternion<double>(q.tail<4>());
 
         // M = blockdiag(m*I,R_WB*I_B*R_BW )
-        Mw.block<3, 3>(0, 0).noalias() = M_.block<3, 3>(0, 0);
+        Mw.block<3, 3>(0, 0).noalias() = M_com_B_.block<3, 3>(0, 0);
         Mw.block<3, 3>(3, 3).noalias() =
-            quat.toRotationMatrix() * M_.block<3, 3>(3, 3) * quat.inverse().toRotationMatrix();
+            quat.toRotationMatrix() * M_com_B_.block<3, 3>(3, 3) * quat.inverse().toRotationMatrix();
 
         return Mw;
     }
@@ -106,7 +106,7 @@ public:
         // nonlinearElements(n = [-m * g_vec; w x(I * w)]) // Minus g_vec is correct here!
         nle.head(3) = -model_.gravity.linear() * mass_;
         nle.tail(3) = pinocchio::cross(v.tail<3>(),
-                                       quat.toRotationMatrix() * M_.block<3, 3>(3, 3) *
+                                       quat.toRotationMatrix() * M_com_B_.block<3, 3>(3, 3) *
                                            quat.inverse().toRotationMatrix() * v.tail<3>());
 
         return nle;
@@ -172,15 +172,20 @@ private:
     std::vector<pinocchio::SE3> T_grasp2meas_; // transformation from grasp to mocap frames
     std::vector<pinocchio::SE3> T_grasp2com_;  // transformation from grasp to com frames
 
+    // transformation of angular velocity to quaternion derivative (see quaternion propagation)
     Eigen::Matrix<double, 4, 3> Z_;
-    // mass matrix in com frame
-    Eigen::MatrixXd M_ = Eigen::MatrixXd::Zero(6, 6);
+    // mass matrix of center of mass in body a.k.a. com frame
+    Eigen::MatrixXd M_com_B_ = Eigen::MatrixXd::Zero(6, 6);
 
+    // mass
     double mass_;
-    Eigen::Matrix3d theta_; // inertia matrix in com frame
+    // inertia of center of mass in body a.k.a. com frame
+    Eigen::Matrix3d inertia_com_B_;
 
+    // twist of object in world frame
     pinocchio::MotionTpl<double> v_;
-    pinocchio::SE3 T_WB_; // transformation from world to base frame
+    // transformation from body to world frame
+    pinocchio::SE3 T_WB_;
 };
 } // namespace mars
 
