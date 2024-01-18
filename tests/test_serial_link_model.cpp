@@ -19,7 +19,7 @@ TEST(TestConstructor, TestConstructorViaModel)
     pinocchio::Model model;
     pinocchio::urdf::buildModel(urdf_filename, model);
 
-    mars::SerialLink mars_model(model);
+    mars::SerialLink mars_model(model, {});
 }
 
 TEST(TestConstructor, TestConstructorViaURDF)
@@ -27,7 +27,16 @@ TEST(TestConstructor, TestConstructorViaURDF)
     // You should change here to set up your own URDF file or just pass it as an argument of this example.
     const std::string urdf_filename = PINOCCHIO_MODEL_DIR + std::string("/iiwa7.urdf");
 
-    mars::SerialLink mars_model(urdf_filename);
+    mars::SerialLink mars_model(urdf_filename, {});
+}
+
+TEST(TestConstructor, TestFrameNames)
+{
+    // You should change here to set up your own URDF file or just pass it as an argument of this example.
+    const std::string urdf_filename = PINOCCHIO_MODEL_DIR + std::string("/iiwa7.urdf");
+
+    EXPECT_THROW(mars::SerialLink mars_model1(urdf_filename, {"wrong_link"}), std::invalid_argument);
+    EXPECT_NO_THROW(mars::SerialLink mars_model2(urdf_filename, {"iiwa_link_ee"})) << "init failed";
 }
 
 class TestSerialLinkModel : public ::testing::Test
@@ -37,7 +46,8 @@ protected:
     {
         // You should change here to set up your own URDF file or just pass it as an argument of this example.
         const std::string urdf_filename = PINOCCHIO_MODEL_DIR + std::string("/iiwa7.urdf");
-        mars_model_ = std::make_shared<mars::SerialLink>(urdf_filename);
+        std::vector<std::string> frame_names = {"iiwa_link_ee"};
+        mars_model_ = std::make_shared<mars::SerialLink>(urdf_filename, frame_names);
 
         nq_ = mars_model_->model_.nq;
         nv_ = mars_model_->model_.nv;
@@ -62,15 +72,9 @@ protected:
     double nv_;
 };
 
-TEST_F(TestSerialLinkModel, TestInit)
-{
-    EXPECT_THROW(mars_model_->init({"wrong_link"}), std::invalid_argument);
-    EXPECT_NO_THROW(mars_model_->init({"iiwa_link_ee"})) << "init failed";
-}
 
 TEST_F(TestSerialLinkModel, TestMassMatrix)
 {
-    mars_model_->init({"iiwa_link_ee"});
     Eigen::MatrixXd M = Eigen::MatrixXd::Zero(nv_, nv_);
     M = mars_model_->mass_matrix(q_, M);
     std::cout << "M = \n" << M << std::endl;
@@ -80,7 +84,6 @@ TEST_F(TestSerialLinkModel, TestMassMatrix)
 
 TEST_F(TestSerialLinkModel, TestGravityTerm)
 {
-    mars_model_->init({"iiwa_link_ee"});
     Eigen::VectorXd g = Eigen::VectorXd::Zero(nv_);
     g = mars_model_->gravity_term(q_, g);
     std::cout << "g = " << g.transpose() << std::endl;
@@ -88,7 +91,6 @@ TEST_F(TestSerialLinkModel, TestGravityTerm)
 
 TEST_F(TestSerialLinkModel, TestNonLinearTerm)
 {
-    mars_model_->init({"iiwa_link_ee"});
     Eigen::VectorXd nle = Eigen::VectorXd::Zero(nv_);
     nle = mars_model_->non_linear_term(q_, v_, nle);
     std::cout << "nle = " << nle.transpose() << std::endl;
@@ -96,7 +98,6 @@ TEST_F(TestSerialLinkModel, TestNonLinearTerm)
 
 TEST_F(TestSerialLinkModel, TestKinematics)
 {
-    mars_model_->init({"iiwa_link_ee"});
     mars_model_->update_kinematics(q_, v_);
 
     pinocchio::SE3 Mi;

@@ -24,57 +24,15 @@ const std::string obj_ref_frame_name = "obj_ref";
 class SE3 : public BaseModel
 {
 public:
-    SE3(pinocchio::Model &model) : BaseModel(model)
+    SE3(pinocchio::Model &model, const std::vector<std::string> &frame_names) : BaseModel(model, frame_names)
     {
+        init(frame_names);
     }
-    SE3(const std::string &urdf_filename) : BaseModel(urdf_filename)
+    SE3(const std::string &urdf_filename, const std::vector<std::string> &frame_names)
+        : BaseModel(urdf_filename, frame_names)
     {
+        init(frame_names);
     }
-
-    void init(const std::vector<std::string> &grasp_frame_names)
-    {
-        getFrameId(obj_com_frame_name, com_frame_id_);
-        getFrameId(obj_meaured_frame_name, measured_frame_id_);
-        getFrameId(obj_ref_frame_name, ref_frame_id_);
-
-        frame_ids_.clear();
-        frame_ids_.reserve(grasp_frame_names.size());
-        for (const auto &frame_name : grasp_frame_names)
-        {
-            pinocchio::JointIndex frame_id;
-            getFrameId(frame_name, frame_id);
-            frame_ids_.push_back(frame_id);
-        }
-
-        // compute relative frames
-
-        T_ref2com_ = model_.frames[ref_frame_id_].placement;
-        T_meas2com_ = model_.frames[measured_frame_id_].placement;
-
-        T_grasp2com_.clear();
-        T_grasp2meas_.clear();
-        T_grasp2meas_.reserve(frame_ids_.size());
-        T_grasp2com_.reserve(frame_ids_.size());
-        // T_mocap2grasp
-        for (const auto &frame_id : frame_ids_)
-        {
-            T_grasp2com_.push_back(model_.frames[frame_id].placement);
-
-            T_grasp2meas_.push_back(T_meas2com_ * model_.frames[frame_id].placement);
-        }
-
-        // get mass matrix and gravity vector
-        mass_ = model_.inertias[0].mass();
-        inertia_com_B_ = model_.inertias[0].inertia();
-
-        M_com_B_(0, 0) = mass_;
-        M_com_B_(1, 1) = mass_;
-        M_com_B_(2, 2) = mass_;
-        M_com_B_.block<3, 3>(3, 3) = inertia_com_B_;
-
-        std::cout << "Object: Number of graspframes: " << frame_ids_.size() << "\n";
-    }
-
 
     Eigen::Ref<const Eigen::MatrixXd> mass_matrix(const Eigen::VectorXd &q, Eigen::Ref<Eigen::MatrixXd> Mw)
     {
@@ -162,6 +120,50 @@ public:
     }
 
 private:
+    void init(const std::vector<std::string> &grasp_frame_names)
+    {
+        getFrameId(obj_com_frame_name, com_frame_id_);
+        getFrameId(obj_meaured_frame_name, measured_frame_id_);
+        getFrameId(obj_ref_frame_name, ref_frame_id_);
+
+        frame_ids_.clear();
+        frame_ids_.reserve(grasp_frame_names.size());
+        for (const auto &frame_name : grasp_frame_names)
+        {
+            pinocchio::JointIndex frame_id;
+            getFrameId(frame_name, frame_id);
+            frame_ids_.push_back(frame_id);
+        }
+
+        // compute relative frames
+
+        T_ref2com_ = model_.frames[ref_frame_id_].placement;
+        T_meas2com_ = model_.frames[measured_frame_id_].placement;
+
+        T_grasp2com_.clear();
+        T_grasp2meas_.clear();
+        T_grasp2meas_.reserve(frame_ids_.size());
+        T_grasp2com_.reserve(frame_ids_.size());
+        // T_mocap2grasp
+        for (const auto &frame_id : frame_ids_)
+        {
+            T_grasp2com_.push_back(model_.frames[frame_id].placement);
+
+            T_grasp2meas_.push_back(T_meas2com_ * model_.frames[frame_id].placement);
+        }
+
+        // get mass matrix and gravity vector
+        mass_ = model_.inertias[0].mass();
+        inertia_com_B_ = model_.inertias[0].inertia();
+
+        M_com_B_(0, 0) = mass_;
+        M_com_B_(1, 1) = mass_;
+        M_com_B_(2, 2) = mass_;
+        M_com_B_.block<3, 3>(3, 3) = inertia_com_B_;
+
+        std::cout << "Object: Number of graspframes: " << frame_ids_.size() << "\n";
+    }
+
     pinocchio::JointIndex com_frame_id_;
     pinocchio::JointIndex measured_frame_id_;
     pinocchio::JointIndex ref_frame_id_;

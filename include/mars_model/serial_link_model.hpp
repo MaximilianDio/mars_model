@@ -14,23 +14,16 @@ namespace mars
 class SerialLink : public BaseModel
 {
 public:
-    SerialLink(pinocchio::Model &model) : BaseModel(model)
+    SerialLink(pinocchio::Model &model, const std::vector<std::string> &frame_names) : BaseModel(model, frame_names)
     {
+        init(frame_names);
         data_ = pinocchio::Data(model_);
     }
-    SerialLink(const std::string &urdf_filename) : BaseModel(urdf_filename)
+    SerialLink(const std::string &urdf_filename, const std::vector<std::string> &frame_names)
+        : BaseModel(urdf_filename, frame_names)
     {
+        init(frame_names);
         data_ = pinocchio::Data(model_);
-    }
-
-    void init(const std::vector<std::string> &frame_names)
-    {
-        for (const auto &frame_name : frame_names)
-        {
-            pinocchio::JointIndex frame_id;
-            getFrameId(frame_name, frame_id);
-            frame_ids_.push_back(frame_id);
-        }
     }
 
     void update_kinematics(const Eigen::VectorXd &q, const Eigen::VectorXd &v)
@@ -92,6 +85,16 @@ public:
     }
 
 private:
+    void init(const std::vector<std::string> &frame_names)
+    {
+        for (const auto &frame_name : frame_names)
+        {
+            pinocchio::JointIndex frame_id;
+            getFrameId(frame_name, frame_id);
+            frame_ids_.push_back(frame_id);
+        }
+    }
+
     pinocchio::Data data_;
 };
 

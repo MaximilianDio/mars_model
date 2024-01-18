@@ -20,22 +20,17 @@ public:
     /**
      * @brief Construct a new model by copying a pinocchio model
     */
-    BaseModel(pinocchio::Model &model)
+    BaseModel(pinocchio::Model &model, const std::vector<std::string> &/*frame_names*/)
     {
         model_ = model;
     }
     /**
      * @brief Construct a new model by loading a urdf file
     */
-    BaseModel(const std::string &urdf_filename)
+    BaseModel(const std::string &urdf_filename, const std::vector<std::string> &/*frame_names*/)
     {
         pinocchio::urdf::buildModel(urdf_filename, model_);
     }
-
-    /**
-     * @brief initialize the model and get the frame ids
-    */
-    virtual void init(const std::vector<std::string> &frame_names) = 0;
 
     /**
      * @brief Compute the mass matrix in world frame of the dynamics equation
@@ -148,6 +143,12 @@ protected:
         else
             throw(std::invalid_argument("frame: " + frame_name + " does not belong to the model\n"));
     };
+
+private:
+    /**
+     * @brief initialize the model and get the frame ids
+    */
+    virtual void init(const std::vector<std::string> &frame_names) = 0;
 };
 
 } // namespace mars

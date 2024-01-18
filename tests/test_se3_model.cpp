@@ -18,7 +18,7 @@ TEST(TestConstructor, TestConstructorViaModel)
     pinocchio::Model model;
     pinocchio::urdf::buildModel(urdf_filename, model);
 
-    mars::SE3 mars_model(model);
+    mars::SE3 mars_model(model, {});
 }
 
 TEST(TestConstructor, TestConstructorViaURDF)
@@ -26,7 +26,19 @@ TEST(TestConstructor, TestConstructorViaURDF)
     // You should change here to set up your own URDF file or just pass it as an argument of this example.
     const std::string urdf_filename = PINOCCHIO_MODEL_DIR + std::string("/se3_object.urdf");
 
-    mars::SE3 mars_model(urdf_filename);
+    mars::SE3 mars_model(urdf_filename, {});
+}
+
+TEST(TestConstructor, TestConstructorViaModelAndFrameNames)
+{
+    // You should change here to set up your own URDF file or just pass it as an argument of this example.
+    const std::string urdf_filename = PINOCCHIO_MODEL_DIR + std::string("/se3_object.urdf");
+
+    pinocchio::Model model;
+    pinocchio::urdf::buildModel(urdf_filename, model);
+
+    EXPECT_THROW(mars::SE3 mars_model(model, {"obj_p_01", "obj_p_03"}), std::invalid_argument);
+    EXPECT_NO_THROW(mars::SE3 mars_model(model, {"obj_p_01", "obj_p_02"})) << "init failed";
 }
 
 class TestSE3Model : public ::testing::Test
@@ -36,7 +48,8 @@ protected:
     {
         // You should change here to set up your own URDF file or just pass it as an argument of this example.
         const std::string urdf_filename = PINOCCHIO_MODEL_DIR + std::string("/se3_object.urdf");
-        mars_model_ = std::make_shared<mars::SE3>(urdf_filename);
+        std::vector<std::string> frame_names = {"obj_p_01", "obj_p_02"};
+        mars_model_ = std::make_shared<mars::SE3>(urdf_filename, frame_names);
 
         nq_ = 7;
         nv_ = 6;
@@ -61,15 +74,8 @@ protected:
     double nv_;
 };
 
-TEST_F(TestSE3Model, TestInit)
-{
-    EXPECT_THROW(mars_model_->init({"obj_p_01", "obj_p_03"}), std::invalid_argument);
-    EXPECT_NO_THROW(mars_model_->init({"obj_p_01", "obj_p_02"})) << "init failed";
-}
-
 TEST_F(TestSE3Model, TestMassMatrix)
 {
-    mars_model_->init({"obj_p_01", "obj_p_02"});
     Eigen::MatrixXd M = Eigen::MatrixXd::Zero(nv_, nv_);
     M = mars_model_->mass_matrix(q_, M);
     std::cout << "M = \n" << M << std::endl;
@@ -79,7 +85,6 @@ TEST_F(TestSE3Model, TestMassMatrix)
 
 TEST_F(TestSE3Model, TestGravityTerm)
 {
-    mars_model_->init({"obj_p_01", "obj_p_02"});
     Eigen::VectorXd g = Eigen::VectorXd::Zero(nv_);
     g = mars_model_->gravity_term(q_, g);
     std::cout << "g = " << g.transpose() << std::endl;
@@ -87,7 +92,6 @@ TEST_F(TestSE3Model, TestGravityTerm)
 
 TEST_F(TestSE3Model, TestNonLinearTerm)
 {
-    mars_model_->init({"obj_p_01", "obj_p_02"});
     Eigen::VectorXd nle = Eigen::VectorXd::Zero(nv_);
     nle = mars_model_->non_linear_term(q_, v_, nle);
     std::cout << "nle = " << nle.transpose() << std::endl;
@@ -95,7 +99,6 @@ TEST_F(TestSE3Model, TestNonLinearTerm)
 
 TEST_F(TestSE3Model, TestKinematics)
 {
-    mars_model_->init({"obj_p_01", "obj_p_02"});
     mars_model_->update_kinematics(q_, v_);
 
     pinocchio::SE3 Mi;
