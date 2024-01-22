@@ -36,3 +36,4 @@ endmacro()
 # add tests here:
 package_add_test(test_mars_model test_mars_model.cpp)
 package_add_test(test_iiwa7_ik test_iiwa7_ik.cpp)
+package_add_test(test_se3_model test_se3_model.cpp)
