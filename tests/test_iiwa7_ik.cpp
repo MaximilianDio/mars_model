@@ -1,7 +1,18 @@
+#include "pinocchio/algorithm/frames.hpp"
+#include "pinocchio/algorithm/kinematics.hpp"
+#include "pinocchio/multibody/model.hpp"
+#include "pinocchio/parsers/urdf.hpp"
 #include "pinocchio/spatial/se3.hpp"
 #include "pinocchio/spatial/skew.hpp"
+
 #include <Eigen/Dense>
 #include <iostream>
+
+
+// PINOCCHIO_MODEL_DIR is defined by the CMake but you can define your own directory here.
+#ifndef PINOCCHIO_MODEL_DIR
+#define PINOCCHIO_MODEL_DIR "/workspace/model_and_simulation/mars_model/models/iiwa7"
+#endif
 
 /**
  * @brief Compute the unit vector of a vector
@@ -60,12 +71,6 @@ Eigen::Ref<Eigen::Matrix<double, 7, 1>> iiwa7_ik(const pinocchio::SE3 &pose,
     // Check if pose is within arm+forearm reach
     assert((dsw < lSE + lEW) && (dsw > lSE - lEW) && "Specified pose outside reachable workspace");
 
-    // Joint 4 calculation
-    // Elbow joint can be directly calculated since it does only depend on the robot configuration and the xsw vector
-    q(3) = elbow * std::acos((dsw * dsw - lSE * lSE - lEW * lEW) / (2 * lSE * lEW));
-
-    Eigen::Matrix3d R34 = dh_R(-M_PI / 2.0, q(3));
-
     double q0_o = 0.0;
     if (xsw.cross(Eigen::Vector3d(0, 0, 1)).norm() > 1e-6)
     {
@@ -90,6 +95,12 @@ Eigen::Ref<Eigen::Matrix<double, 7, 1>> iiwa7_ik(const pinocchio::SE3 &pose,
     q(1) = arm * acos(R03(2, 1));
     q(2) = atan2(arm * R03(2, 2), -arm * R03(2, 0));
 
+    // Joint 4 calculation
+    // Elbow joint can be directly calculated since it does only depend on the robot configuration and the xsw vector
+    q(3) = elbow * std::acos((dsw * dsw - lSE * lSE - lEW * lEW) / (2 * lSE * lEW));
+
+    Eigen::Matrix3d R34 = dh_R(-M_PI / 2.0, q(3));
+
     Eigen::Matrix3d R47 =
         R34.transpose() * (As.transpose() * sin(psi) + Bs.transpose() * cos(psi) + Cs.transpose()) * pose.rotation();
 
@@ -103,11 +114,27 @@ Eigen::Ref<Eigen::Matrix<double, 7, 1>> iiwa7_ik(const pinocchio::SE3 &pose,
 int main()
 {
     pinocchio::SE3 T = pinocchio::SE3::Identity();
-    T.translation() = Eigen::Vector3d(0.5, 0.5, 0.5);
+    T.translation() = Eigen::Vector3d(0.0, 0.0, 0.5);
     Eigen::Matrix<double, 7, 1> q = Eigen::Matrix<double, 7, 1>::Zero();
-    iiwa7_ik(T, M_PI / 2, q);
+    iiwa7_ik(T, 0, q);
 
     std::cout << "T = \n" << T << std::endl;
     std::cout << "q = \n" << q.transpose() << std::endl;
+
+    // You should change here to set up your own URDF file or just pass it as an argument of this example.
+    const std::string urdf_filename = PINOCCHIO_MODEL_DIR + std::string("/iiwa7.urdf");
+
+    pinocchio::Model model;
+    pinocchio::urdf::buildModel(urdf_filename, model);
+
+    pinocchio::Data data(model);
+
+    pinocchio::forwardKinematics(model, data, q);
+    pinocchio::updateFramePlacements(model, data);
+
+    auto frame_id = model.getFrameId("iiwa_link_ee");
+    auto frame_pose = data.oMf[frame_id];
+    std::cout << "frame_pose = \n" << frame_pose << std::endl;
+
     return 0;
 }
